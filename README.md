@@ -1,97 +1,123 @@
-# Multi-Site Enterprise Core Network with Remote Pi-hole & Automated SNMP Monitoring
+# Proxmox Network Homelab
 
-A homelab project simulating a multi-site enterprise network using virtualization, site-to-site VPN tunnels, a remote DNS sinkhole (Pi-hole), and automated SNMP-based monitoring built entirely on consumer hardware.
+A hands-on networking lab built on a single laptop running Proxmox VE, a Raspberry Pi Zero W as a future remote node, and a 500 GB external hard drive. I use it to practice the skills behind the CCNA: bridging and switching concepts, NAT, routing, DNS, VPNs, monitoring and troubleshooting.
 
-## Overview
+**Status:** active, work in progress. Everything under *Completed* is running or documented. Everything under *Planned* is **not built yet**.
 
-This project recreates the core pieces of an enterprise WAN(World Area network) connected over encrypted tunnels, centralized monitoring, and a remote edge location running its own services. Instead of racks of hardware, the sites are virtualized on a single host and connected to real physical nodes.
+**Author:** Joseph Marcell Lugo Brown, third-year IT Management student (ATI) at TEC, Costa Rica. Preparing for the CCNA. [GitHub profile](https://github.com/marcell6449)
 
-## Architecture
+---
 
-```
-Proxmox VE host (i3, 8GB)
-├── Container
-├── NAS
-└── LibreNMS VM
-    └── SNMP + alerts
+## Goals
 
-WireGuard tunnels
-├── Laptop, 4GB
-│   └── WireGuard client
-└── Raspberry Pi — Site C router
-    ├── Pi-hole DNS
-    └── WireGuard client + snmpd agent
-```
+- Build and break a real network on limited hardware, and document every problem with its root cause and fix.
+- Provide NAT, DNS, VPN access, monitoring and video streaming (Jellyfin) from one host.
+- Reach a multi-site design (simulated sites) connected with WireGuard.
+
 ## Hardware
 
-| Role | Device | Specs |
-|---|---|---|
-| Core hypervisor | Lenovo IdeaPad 3 (Model 81WA) (x64-based PC) | Intel Core i3 / , 8 GB DDR4 (7.84 GB usable), Storage / Disk: System drive on Partition 1 (\Device\HarddiskVolume1) with page file active, Intel Wireless-AC 9560 (Wi-Fi 5), Bluetooth Adapter (PAN), Fully supported (VT-x enabled in BIOS, Second Level Address Translation, SLAT) |
-| Site C node | Secondary laptop | Low-spec, 4 GB RAM |
-| Remote edge | Raspberry Pi | <1 GB RAM |
+| Role | Device | Details |
+| --- | --- | --- |
+| Hypervisor host | Lenovo IdeaPad 3 (81WA) | Intel Core i3, 8 GB DDR4, runs Proxmox VE. *(complete: exact CPU model, internal disk size/type, Proxmox version)* |
+| Uplink | USB-A to RJ45 Ethernet adapter | *(complete: chipset from `lsusb`)* |
+| Media storage | External USB hard drive | 500 GB, planned for Jellyfin media |
+| Remote node | Raspberry Pi Zero W | 512 MB RAM, 1 GHz single core, 2.4 GHz Wi-Fi only. Planned for Pi-hole and SNMP agent |
 
-## Stack
+## Current architecture
 
-- **Hypervisor:** Proxmox VE
-- **Routing/Firewall:** OPNsense or VyOS (virtualized per site)
-- **Site-to-site connectivity:** WireGuard
-- **DNS filtering:** Pi-hole (on Raspberry Pi)
-- **Monitoring:** LibreNMS (SNMP polling, alerting)
-- **SNMP agent:** net-snmp (`snmpd`) on all endpoints
+This is the active configuration (see [INC-001](docs/troubleshooting.md#inc-001)). IP addresses are examples.
 
-## Build phases
-
-1. **Virtualization foundation** — Proxmox install, virtual bridges/VLANs per site
-2. **Core routing** — deploy per-site router VMs, configure NAT/firewall rules
-3. **Site-to-site VPN** — WireGuard tunnels linking all sites
-4. **Remote edge** — Pi-hole + WireGuard client + snmpd on the Raspberry Pi
-5. **Monitoring** — LibreNMS VM, SNMP-enabled devices, automated alerts
-6. **Hardening** — VLAN segmentation, IDS (Suricata), config backups, syslog
-
-## Setup
-
-### 1. Proxmox host
-```bash
-# After installing Proxmox VE, create a Linux bridge per simulated site
-# Datacenter > <node> > System > Network > Create > Linux Bridge
+```mermaid
+flowchart LR
+    Internet(("Internet<br/>ISP uses CGNAT")) --- Router["Home router<br/>192.168.1.1"]
+    Router --- NIC["USB Ethernet adapter<br/>host IP 192.168.1.2"]
+    subgraph PVE["Proxmox VE host - Lenovo IdeaPad 3"]
+        NIC --- Host["Proxmox host"]
+        Host --- BR["vmbr1 (NAT bridge)<br/>10.10.10.1/24"]
+        BR --- CT["LXC 102<br/>Debian 13"]
+    end
 ```
 
-### 2. Router VMs
-- Deploy OPNsense/VyOS ISO as a VM per site (512MB–1GB RAM each)
-- Assign each to its site's virtual bridge + a shared "WAN" bridge
+A proposed change, where the USB adapter becomes a bridge port so containers share the LAN, is described in [INC-002](docs/troubleshooting.md#inc-002) and is **pending verification**.
 
-### 3. WireGuard tunnels
-```bash
-# On each router/node
-wg genkey | tee privatekey | wg pubkey > publickey
-```
-Add peer configs referencing each site's public key and endpoint.
+## Planned architecture
 
-### 4. Pi-hole on Raspberry Pi
-```bash
-curl -sSL https://install.pi-hole.net | bash
-```
-
-### 5. SNMP agent (all nodes)
-```bash
-sudo apt install snmpd
-sudo nano /etc/snmp/snmpd.conf   # set community string, agentAddress
-sudo systemctl restart snmpd
+```mermaid
+flowchart TB
+    subgraph Home["Home network"]
+        Router2["Home router"] --- Host2["Proxmox host"]
+        Host2 --- Rtr["Router VM<br/>VyOS or OPNsense"]
+        Host2 --- Apps["LXC: Jellyfin, LibreNMS"]
+        Host2 --- HDD[("External HDD 500 GB")]
+    end
+    Pi["Raspberry Pi Zero W<br/>Pi-hole + snmpd"] -- "Tailscale / WireGuard" --- Host2
+    Apps -. "SNMP polling" .-> Pi
 ```
 
-### 6. LibreNMS
-Deploy via the [official Docker/VM install guide](https://docs.librenms.org/), then add each router/Pi as a device using its SNMP community string.
+## Completed
 
-## Status / Roadmap
+- Proxmox VE installed on the IdeaPad 3. Details in [docs/proxmox.md](docs/proxmox.md).
+- Identified that my ISP uses **CGNAT** with `mtr`, so inbound connections are not possible. Remote access is solved with **Tailscale**.
+- Diagnosed and worked around a USB Ethernet adapter that failed as a port of `vmbr0` ([INC-001](docs/troubleshooting.md#inc-001)): host IP on the USB interface plus an isolated NAT bridge `vmbr1`.
+- Created an unprivileged **LXC container** (ID 102, Debian 13). See [docs/containers.md](docs/containers.md).
+- Configured static routes, enabled container nesting, enabled TUN/TAP for a future OpenVPN test, and set Cloudflare as upstream DNS. See [docs/networking-notes.md](docs/networking-notes.md).
+- Wake-on-LAN service configured (wake-up test pending).
 
-- [ ] Site A & B router VMs deployed
-- [ ] WireGuard mesh established
-- [ ] Pi-hole live and resolving for remote clients
-- [ ] LibreNMS polling all nodes
-- [ ] Alerting configured (email/Discord webhook)
-- [ ] VLAN segmentation added
-- [ ] IDS/IPS enabled
+## Incident log
+
+| ID | Date | Summary | Status |
+| --- | --- | --- | --- |
+| [INC-001](docs/troubleshooting.md#inc-001) | 2026-09-17 | Proxmox unreachable: USB Ethernet adapter did not work as a port of `vmbr0`. Fixed with host IP on the adapter and NAT bridge `vmbr1`. | Resolved |
+| [INC-002](docs/troubleshooting.md#inc-002) | 2026-10-01 | Containers had no LAN access because `vmbr1` had no uplink. Fix: move host IP to `vmbr1` with the USB adapter as bridge port. | Pending apply and verification |
+
+## Lessons learned
+
+- An interface that is a bridge port cannot hold its own IP. The IP belongs on the bridge.
+- Not every USB Ethernet adapter is reliable as a bridge port. An isolated NAT bridge is a safe fallback, and every change needs a rollback plan.
+- Behind CGNAT there is no public IPv4 address for inbound traffic, so an overlay VPN such as Tailscale (built on WireGuard) is the practical solution.
+- Good incident notes include symptom, OSI layer, evidence, root cause, fix and rollback.
+
+## Skills demonstrated
+
+- **Linux networking:** bridges, static addressing, NAT masquerading, IP forwarding, static routes (`ip`, `bridge`, `ethtool`, `iptables`, `mtr`).
+- **Virtualization:** Proxmox VE, unprivileged LXC containers, nesting and TUN/TAP options.
+- **Troubleshooting:** layered diagnosis (OSI), recovery access, documented rollback.
+- **DNS and remote access:** upstream DNS configuration, secure access under CGNAT.
+- **Technical documentation:** incident reports and configuration notes.
+
+## Roadmap
+
+- [x] Proxmox VE installed
+- [x] CGNAT identified, Tailscale for remote access
+- [x] INC-001 resolved (NAT bridge)
+- [x] First LXC container (Debian 13)
+- [ ] INC-002 applied and verified
+- [ ] Jellyfin in an LXC container using the external HDD
+- [ ] Raspberry Pi Zero W: Pi-hole and `snmpd`
+- [ ] LibreNMS monitoring with alerts
+- [ ] Router VM (VyOS or OPNsense) per simulated site
+- [ ] WireGuard tunnel between sites
+- [ ] VLAN segmentation, IDS, IPS and configuration backups
+
+## Repository structure
+
+```
+.
+├── README.md
+├── LICENSE
+└── docs/
+    ├──VLAN/
+        ├──IDS-IPS
+        └──configuration backups  
+    ├── Proxmox.md
+    ├── container.md
+    ├── wiregard.md
+    ├── Jellyfin
+    ├── LibreNMS
+    ├── Router VM
+    └── NETWORK_TROUBLESHOOTING.md
+```
 
 ## License
 
-MIT
+MIT. See `LICENSE`.
