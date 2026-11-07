@@ -23,36 +23,39 @@ A hands-on networking lab built on a single laptop running Proxmox VE, a Raspber
 | Media storage | External USB hard drive | 500 GB, planned for Jellyfin media |
 | Remote node | Raspberry Pi Zero W | 512 MB RAM, 1 GHz single core, 2.4 GHz Wi-Fi only. Planned for Pi-hole and SNMP agent |
 
-## Current architecture
-
-This is the active configuration (see [INC-001](docs/troubleshooting.md#inc-001)). IP addresses are examples.
-
-```mermaid
-flowchart LR
-    Internet(("Internet<br/>ISP uses CGNAT")) --- Router["Home router<br/>192.168.1.1"]
-    Router --- NIC["USB Ethernet adapter<br/>host IP 192.168.1.2"]
-    subgraph PVE["Proxmox VE host - Lenovo IdeaPad 3"]
-        NIC --- Host["Proxmox host"]
-        Host --- BR["vmbr1 (NAT bridge)<br/>10.10.10.1/24"]
-        BR --- CT["LXC 102<br/>Debian 13"]
-    end
-```
-
-A proposed change, where the USB adapter becomes a bridge port so containers share the LAN, is described in [INC-002](docs/troubleshooting.md#inc-002) and is **pending verification**.
 
 ## Planned architecture
 
+**Not built yet.** This is the target design. Progress is tracked in the [Roadmap](#roadmap).
+
 ```mermaid
 flowchart TB
-    subgraph Home["Home network"]
-        Router2["Home router"] --- Host2["Proxmox host"]
-        Host2 --- Rtr["Router VM<br/>VyOS or OPNsense"]
-        Host2 --- Apps["LXC: Jellyfin, LibreNMS"]
-        Host2 --- HDD[("External HDD 500 GB")]
+    Internet(("Internet<br/>ISP uses CGNAT")) --- Router["Home router 192.168.1.1<br/>(LAN gateway)"]
+    Router --- Pi["Raspberry Pi Zero W (Wi-Fi)<br/>Pi-hole, snmpd, Tailscale"]
+    Router --- NIC["USB Ethernet adapter"]
+
+    subgraph PVE["Proxmox VE host"]
+        NIC --- BR1["vmbr1<br/>host IP 192.168.1.2"]
+        BR1 --- RVM["Router VM (VyOS or OPNsense)<br/>NAT, firewall, IDS/IPS"]
+        RVM --- BR2["vmbr2<br/>VLAN-aware, no physical port"]
+        BR2 --- V10["VLAN 10 - Management<br/>LibreNMS"]
+        BR2 --- V20["VLAN 20 - Services<br/>Jellyfin LXC<br/>(media on external HDD)"]
+        BR2 --- V30["VLAN 30 - Lab<br/>tests"]
     end
-    Pi["Raspberry Pi Zero W<br/>Pi-hole + snmpd"] -- "Tailscale / WireGuard" --- Host2
-    Apps -. "SNMP polling" .-> Pi
+
+    Pi -. "overlay tunnel: Tailscale / WireGuard" .- BR1
+    RVM -. "config backups" .-> Git["Git / Oxidized"]
+    PVE -. "vzdump" .-> Backups["VM and container backups"]
 ```
+
+| Layer | Design choice |
+| --- | --- |
+| Gateway | The home router stays the LAN gateway. |
+| Remote node | The Pi Zero W is a side node on the home router (Wi-Fi only), not a hop in the data path. |
+| Tunnel | Tailscale / WireGuard is an overlay between devices, not a physical link. |
+| VLANs | Internal only (`vmbr2` has no physical port), so the USB adapter carries untagged traffic. |
+| Security | IDS first (alerts only), IPS later. |
+| Backups | Router configs to Git/Oxidized, VMs and containers with `vzdump`. |
 
 ## Completed
 
@@ -99,25 +102,29 @@ flowchart TB
 - [ ] WireGuard tunnel between sites
 - [ ] VLAN segmentation, IDS, IPS and configuration backups
 
-## Repository structure
+## Repository structure (planet, not built yet)
 
 ```
 .
 ├── README.md
 ├── LICENSE
 └── docs/
-    ├──VLAN/
-        ├──IDS-IPS
-        └──configuration backups  
-    ├── Proxmox.md
-    ├── container.md
-    ├── wiregard.md
-    ├── Jellyfin
-    ├── LibreNMS
-    ├── Router VM
-    └── NETWORK_TROUBLESHOOTING.md
+    ├── proxmox.md
+    ├── networking-notes.md        (static routes, DNS, nesting, TUN/TAP)
+    ├── NETWORK_TREOUBLESHOOTING.md       (INC-001, INC-002, ...)
+    ├── containers/                (Have to fix the structure)
+    │   ├── debian-lxc.md            
+    │   ├── jellyfin.md            (doesn't exist yet)
+    │   └── librenms.md            (doesn't exist yet)
+    ├── network/                     (Have to fix the structure)
+    │   ├── router-vm.md            (doesn't exist yet)
+    │   ├── vlans.md                (doesn't exist yet)
+    │   ├── tailscale.md
+    │   ├── wireguard.md           (doesn't exist yet)
+    │   └── pihole.md              (doesn't exist yet)
+    ├── security/                  (doesn't exist yet)
+    │   └── ids-ips.md
+    └── operations/                (doesn't exist yet)
+        └── backups.md
 ```
 
-## License
-
-MIT. See `LICENSE`.
