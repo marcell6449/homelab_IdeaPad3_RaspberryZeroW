@@ -44,7 +44,6 @@ flowchart TB
     end
 
     Pi -. "overlay tunnel: Tailscale / WireGuard" .- NIC
-    RVM -. "config backups" .-> Git["Git / Oxidized"]
     PVE -. "vzdump" .-> Backups["VM and container backups"]
 ```
 
