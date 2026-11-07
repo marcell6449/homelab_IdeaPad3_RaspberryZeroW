@@ -43,7 +43,7 @@ flowchart TB
         BR2 --- V30["VLAN 30 - Lab<br/>tests"]
     end
 
-    Pi -. "overlay tunnel: Tailscale / WireGuard" .- BR1
+    Pi -. "overlay tunnel: Tailscale / WireGuard" .- NIC
     RVM -. "config backups" .-> Git["Git / Oxidized"]
     PVE -. "vzdump" .-> Backups["VM and container backups"]
 ```
