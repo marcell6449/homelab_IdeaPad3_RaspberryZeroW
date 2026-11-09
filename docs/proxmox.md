@@ -2,7 +2,7 @@
 
 In Proxmox, a bridge is a software-based virtual switch that uses network interfaces in place of physical cables.
 
-I hbailitated the wol.service that i unable with 
+I habilitated the wol.service that i unable with 
 <img width="581" height="276" alt="image" src="https://github.com/user-attachments/assets/13318aef-7687-4057-87c0-c1ca8b0a9297" />
 
 systemctl enable
